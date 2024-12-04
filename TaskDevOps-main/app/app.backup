@@ -1,0 +1,57 @@
+from flask import Flask, request, make_response
+import mysql.connector
+import os
+import socket
+
+app = Flask(__name__)
+
+
+DB_HOST = os.getenv('DB_HOST', 'db')
+DB_USER = os.getenv('DB_USER', 'root')
+DB_PASSWORD = os.getenv('DB_PASSWORD', 'password')
+DB_NAME = os.getenv('DB_NAME', 'app_db')
+
+def get_db_connection():
+    return mysql.connector.connect(
+        host=DB_HOST,
+        user=DB_USER,
+        password=DB_PASSWORD,
+        database=DB_NAME
+    )
+
+@app.route('/')
+def index():
+    client_ip = request.remote_addr
+    internal_ip = socket.gethostbyname(socket.gethostname())
+    timestamp = request.date
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("UPDATE global_counter SET count = count + 1")
+    cursor.execute("SELECT count FROM global_counter")
+    count = cursor.fetchone()[0]
+
+
+    cursor.execute(
+        "INSERT INTO access_log (client_ip, internal_ip, timestamp) VALUES (%s, %s, %s)",
+        (client_ip, internal_ip, timestamp)
+    )
+    conn.commit()
+
+   
+    response = make_response(f"Internal IP: {internal_ip}")
+    response.set_cookie('internal_ip', internal_ip, max_age=300)
+
+    return response
+
+@app.route('/showcount')
+def showcount():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT count FROM global_counter")
+    count = cursor.fetchone()[0]
+    return f"Global Counter: {count}"
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000)
